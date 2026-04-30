@@ -1,39 +1,34 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\AiSummaryController;
-use App\Http\Controllers\CrmController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\TelemetryController;
 use App\Http\Controllers\ChatListController;
+use App\Http\Controllers\TelemetryController;
+use App\Http\Controllers\AiBatchController;
 
-// Jika orang membuka halaman utama, langsung arahkan ke dashboard
+// Jadikan halaman Daftar Chat sebagai halaman utama (ketika buka 127.0.0.1:8000)
 Route::get('/', function () {
-    return redirect('/dashboard');
+    return redirect()->route('chat.list');
 });
 
-// Pintu masuk untuk melihat dashboard
-Route::get('/dashboard', [DashboardController::class, 'index']);
-
-// --- Rute AI CRM ---
-Route::post('/generate-summary/{client_number}', [AiSummaryController::class, 'generate'])->name('ai.summary');
-
-// Rute untuk melihat halaman meja kerja CRM
-Route::get('/crm-board', [CrmController::class, 'index'])->name('crm.board');
-
-// Rute untuk aksi tombol Setujui dan Tolak (Hapus)
-Route::post('/crm-board/approve/{client_number}', [CrmController::class, 'approve'])->name('crm.approve');
-Route::post('/crm-board/reject/{client_number}', [CrmController::class, 'reject'])->name('crm.reject');
-
-// Rute untuk Laporan Manajemen
-Route::get('/management-report', [ReportController::class, 'index'])->name('report.index');
-
-// Rute untuk meminta AI membuatkan draf pesan Follow-Up
-Route::post('/crm-board/follow-up/{client_number}', [App\Http\Controllers\AiSummaryController::class, 'generateFollowUp'])->name('ai.followup');
+// Rute untuk Halaman Daftar Chat (Split View)
+Route::get('/daftar-chat', [ChatListController::class, 'index'])->name('chat.list');
 
 // Rute untuk menampilkan Dashboard API Telemetry
 Route::get('/api-telemetry', [TelemetryController::class, 'index'])->name('telemetry.index');
 
-// Rute untuk Halaman Daftar Chat (Split View)
-Route::get('/daftar-chat', [ChatListController::class, 'index'])->name('chat.list');
+// Rute untuk Pipeline Kanban Board
+Route::get('/pipeline', [\App\Http\Controllers\PipelineController::class, 'index'])->name('pipeline.index');
+Route::post('/pipeline/update-status', [\App\Http\Controllers\PipelineController::class, 'updateStatus'])->name('pipeline.updateStatus');
+
+// Rute untuk memicu proses AI Summary (Batch Job)
+Route::post('/pipeline/trigger-ai', [AiBatchController::class, 'startBatch'])->name('pipeline.triggerAi');
+Route::get('/pipeline/progress', [AiBatchController::class, 'checkProgress'])->name('pipeline.progress');
+
+// Rute untuk mengambil detail lengkap pasien (untuk Modal di Pipeline)
+Route::post('/pipeline/detail', [\App\Http\Controllers\PipelineController::class, 'getDetail'])->name('pipeline.detail');
+
+// Rute untuk mengambil hasil rekap AI terbaru (untuk Modal di Pipeline)
+Route::get('/pipeline/recap-result', [\App\Http\Controllers\AiBatchController::class, 'getRecapResult'])->name('pipeline.recapResult');
+
+// Rute untuk update manual (override) data pasien di Pipeline
+Route::post('/pipeline/update-manual', [\App\Http\Controllers\PipelineController::class, 'updateManual']);
