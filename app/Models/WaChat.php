@@ -17,6 +17,37 @@ class WaChat extends Model
         'chat_time' => 'datetime',
     ];
 
+    // =========================================================================
+    // SENSOR TRACKING AUTO FOLLOW-UP (DIJALANKAN OTOMATIS SAAT ADA CHAT BARU)
+    // =========================================================================
+    protected static function booted()
+    {
+        static::created(function ($chat) {
+            // Cari data pasien di tabel lead_summaries berdasarkan nomor WA
+            $lead = \App\Models\LeadSummary::where('client_number', $chat->client_number)->first();
+            
+            if ($lead) {
+                // Tentukan waktu chat (gunakan now() sebagai fallback jika chat_time kosong)
+                $waktuChat = $chat->chat_time ?? now('Asia/Jakarta');
+
+                if ($chat->is_me == 1) {
+                    // JIKA CS YANG MENGIRIM PESAN
+                    $lead->last_cs_reply_at = $waktuChat;
+                } else {
+                    // JIKA PASIEN YANG MENGIRIM PESAN
+                    $lead->last_patient_reply_at = $waktuChat;
+                    // Reset step follow up ke 0 karena pasien sudah merespons (tidak ghosting lagi)
+                    $lead->follow_up_step = 0; 
+                }
+
+                // SANGAT PENTING: Gunakan saveQuietly() bukan save() biasa.
+                // Ini mencegah terpancingnya Event 'saved' di LeadSummary yang bisa memicu
+                // pengiriman ulang webhook ke Google Sheets tanpa alasan.
+                $lead->saveQuietly(); 
+            }
+        });
+    }
+
     // --- TAMBAHKAN KODE INI ---
     // Logika untuk membuat tulisan Pembatas Tanggal
     public function getTanggalPembatasAttribute()
