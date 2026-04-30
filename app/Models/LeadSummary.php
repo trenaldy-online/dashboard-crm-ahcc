@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class LeadSummary extends Model
 {
@@ -32,15 +33,17 @@ class LeadSummary extends Model
         'fbclid',
         'follow_up_count',
         'tunda_sampai_tanggal',
+        'google_sheet_sent_at', // <-- Kolom baru sudah masuk
     ];
 
     // OPSIONAL TAPI DIREKOMENDASIKAN: Memastikan tipe data konsisten
     protected $casts = [
-        'is_human_validated' => 'boolean',
-        'perlu_follow_up'    => 'boolean',
+        'is_human_validated'   => 'boolean',
+        'perlu_follow_up'      => 'boolean',
+        'google_sheet_sent_at' => 'datetime', // <-- Cast jadi datetime
     ];
 
-    // (Opsional) Relasi ke tabel WaChat jika suatu saat dibutuhkan
+    // Relasi ke tabel WaChat jika suatu saat dibutuhkan
     public function chats()
     {
         return $this->hasMany(WaChat::class, 'client_number', 'client_number');
@@ -48,37 +51,48 @@ class LeadSummary extends Model
 
     protected static function booted()
     {
-        // 1. BUNGKUS FUNGSI PENGIRIMAN AGAR BISA DIPAKAI BERULANG
+        // 1. BUNGKUS FUNGSI PENGIRIMAN
         $sendToGoogleSheet = function ($lead) {
-            // PASTE URL APPS SCRIPT ANDA DI SINI
             $webhookUrl = 'https://script.google.com/macros/s/AKfycbx8xwnHaAHUySysIBo4xl8gwfFjMXgHGffvyHH1QnahIglf_T8L-CKLXQTBo2aMl1lkRw/exec'; 
             
             $cleanPhoneNumber = preg_replace('/[^0-9]/', '', $lead->client_number);
             $conversionTime = now()->timezone('Asia/Jakarta')->format('Y-m-d H:i:sP');
 
-            \Illuminate\Support\Facades\Http::post($webhookUrl, [
-                'gclid'           => $lead->gclid,
-                'client_number'   => $cleanPhoneNumber,
-                'kategori_kanker' => $lead->kategori_kanker ?? 'Belum Terdeteksi',
-                'conversion_time' => $conversionTime
-            ]);
+            try {
+                // Tembak API Google
+                Http::post($webhookUrl, [
+                    'gclid'           => $lead->gclid,
+                    'client_number'   => $cleanPhoneNumber,
+                    'kategori_kanker' => $lead->kategori_kanker ?? 'Belum Terdeteksi',
+                    'conversion_time' => $conversionTime
+                ]);
+            } catch (\Exception $e) {
+                // Jangan buat aplikasi crash jika Google gagal, cukup catat lognya
+                Log::error("Gagal mengirim GCLID untuk Pasien {$lead->client_number}: " . $e->getMessage());
+            }
         };
 
-        // 2. SENSOR UNTUK DATA BARU (Hasil Ekstrak H.A.N.A)
-        static::created(function ($lead) use ($sendToGoogleSheet) {
-            // Jika data baru langsung masuk ke konsultasi dan punya GCLID
-            if ($lead->pipeline_status === 'konsultasi' && !empty($lead->gclid)) {
-                $sendToGoogleSheet($lead);
-            }
-        });
-
-        // 3. SENSOR UNTUK DATA LAMA (Geser Kartu Manual)
-        static::updated(function ($lead) use ($sendToGoogleSheet) {
-            // Jika status BERUBAH menjadi konsultasi dan punya GCLID
-            if ($lead->isDirty('pipeline_status') && 
+        // 2. SENSOR TUNGGAL UNTUK SEMUA PERUBAHAN (BARU MAUPUN LAMA)
+        static::saved(function ($lead) use ($sendToGoogleSheet) {
+            
+            // Cek 3 Syarat Utama:
+            // 1. Status harus konsultasi
+            // 2. GCLID tidak boleh kosong
+            // 3. Kolom google_sheet_sent_at HARUS masih kosong (belum pernah dikirim)
+            if (
                 $lead->pipeline_status === 'konsultasi' && 
-                !empty($lead->gclid)) {
+                !empty($lead->gclid) && 
+                is_null($lead->google_sheet_sent_at)
+            ) {
+                
+                // Eksekusi pengiriman webhook
                 $sendToGoogleSheet($lead);
+
+                // Kunci dengan tanggal agar tidak terjadi duplikasi pengiriman
+                // Gunakan saveQuietly() agar event 'saved' tidak berulang dan menyebabkan Infinite Loop
+                $lead->forceFill([
+                    'google_sheet_sent_at' => now()
+                ])->saveQuietly();
             }
         });
     }

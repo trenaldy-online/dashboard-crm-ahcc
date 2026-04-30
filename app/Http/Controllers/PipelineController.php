@@ -23,7 +23,7 @@ class PipelineController extends Controller
                 $sub->where('client_number', 'like', '%' . $request->search . '%')
                     ->orWhere('kategori_kanker', 'like', '%' . $request->search . '%')
                     ->orWhere('kendala_utama', 'like', '%' . $request->search . '%')
-                    ->orWhere('ringkasan_medis', 'like', '%' . $request->search . '%');
+                    ->orWhere('ringkasan', 'like', '%' . $request->search . '%');
             });
         });
 

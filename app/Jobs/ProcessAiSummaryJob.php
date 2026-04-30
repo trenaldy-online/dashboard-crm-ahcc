@@ -86,7 +86,7 @@ class ProcessAiSummaryJob implements ShouldQueue
         {
             \"kategori_kanker\": \"Jenis kanker\",
             \"ringkasan\": \"Rangkuman obrolan (Maks 2 kalimat)\",
-            \"pipeline_status\": \"leads_baru, edukasi, konsultasi, deal, atau batal\",
+            \"pipeline_status\": \"WAJIB PILIH SALAH SATU: 'leads_baru' (jika baru menyapa), 'edukasi' (jika masih tanya-tanya), 'konsultasi' (jika bahas jadwal/dokter), 'deal' (jika setuju datang). PILIH 'batal' HANYA JIKA pasien secara TEGAS menolak (misal: 'tidak jadi', 'berobat di RS lain', 'mundur karena biaya', 'meninggal'). JIKA pasien hanya bilang 'nanti dikabari/mikir dulu', JANGAN pilih batal, biarkan di edukasi/konsultasi.\",
             
             \"analisa_logika\": \"WAJIB JAWAB STEP-BY-STEP DI SINI: 1. Siapa pengirim baris paling bawah? 2. Apakah pasien meminta waktu/menolak halus? 3. Berdasarkan Kondisi 1, 2, 3 di instruksi, apakah perlu_follow_up harus true atau false?\",
             
@@ -107,8 +107,8 @@ class ProcessAiSummaryJob implements ShouldQueue
         }";
 
         // --- MULAI REKAM CCTV (LOG) SEBELUM DIKIRIM ---
-        Log::info("=== MENGIRIM PROMPT KE GEMINI (PASIEN: {$this->clientNumber}) ===");
-        Log::info($prompt);
+        // Log::info("=== MENGIRIM PROMPT KE GEMINI (PASIEN: {$this->clientNumber}) ===");
+        // Log::info($prompt);
 
         // 3. Tembak API Gemini
         $apiKey = env('GEMINI_API_KEY');
@@ -122,19 +122,28 @@ class ProcessAiSummaryJob implements ShouldQueue
             $rawAiResponse = $response->json('candidates.0.content.parts.0.text');
             
             // --- REKAM CCTV (LOG) JAWABAN MENTAH AI ---
-            Log::info("=== JAWABAN MENTAH DARI GEMINI (PASIEN: {$this->clientNumber}) ===");
-            Log::info($rawAiResponse);
+            // Log::info("=== JAWABAN MENTAH DARI GEMINI (PASIEN: {$this->clientNumber}) ===");
+            // Log::info($rawAiResponse);
 
             $result = json_decode($rawAiResponse, true);
 
             if ($result) {
+                // Ambil status validasi sebelumnya (False jika pasien baru)
+                $isHumanValidated = $existingLead?->is_human_validated ?? false;
+
                 LeadSummary::updateOrCreate(
                     ['client_number' => $this->clientNumber],
                     [
+                        // 1. Terapkan masukan brilian Anda (Cegah Reset Validasi)
+                        'is_human_validated' => $isHumanValidated,
+                        
+                        // 2. LOGIKA KUNCI KANBAN: 
+                        // Jika sudah digeser manusia, pertahankan status lamanya. 
+                        // Jika belum disentuh manusia, biarkan AI yang menentukan kolomnya.
+                        'pipeline_status' => $isHumanValidated ? $existingLead->pipeline_status : ($result['pipeline_status'] ?? 'leads_baru'),
+                        
                         'kategori_kanker' => $result['kategori_kanker'] ?? 'Belum Terdeteksi',
                         'ringkasan' => $result['ringkasan'] ?? 'Tidak ada ringkasan',
-                        'pipeline_status' => $result['pipeline_status'] ?? 'leads_baru',
-                        'is_human_validated' => false,
                         
                         'perlu_follow_up' => $result['perlu_follow_up'] ?? false,
                         'alasan_follow_up' => $result['alasan_follow_up'] ?? null,
@@ -150,7 +159,7 @@ class ProcessAiSummaryJob implements ShouldQueue
                         'gclid' => $result['gclid'] ?? null,
                         'fbclid' => $result['fbclid'] ?? null,
 
-                        'follow_up_count' => ($result['pasien_membalas'] ?? false) ? 0 : ($existingLead ? $existingLead->follow_up_count : 0),
+                        'follow_up_count' => ($result['pasien_membalas'] ?? false) ? 0 : ($existingLead?->follow_up_count ?? 0),
                         'tunda_sampai_tanggal' => $result['tunda_sampai_tanggal'] ?? null,
                     ]
                 );

@@ -178,7 +178,7 @@ class HanaMorningScan extends Command
 
         // 6. PENGIRIMAN WHATSAPP VIA FONNTE
         $fonnteToken = 'ktLApTVPLY96LLz9u1wx'; 
-        $targetWa = trim('083831169957,085604129073,0822296600'); 
+        $targetWa = trim('083831169957'); 
         
         // ---- KIRIM PESAN 1 (BRIEFING) ----
         $pesanWa1 = str_replace(['<b>', '</b>', '<strong>', '</strong>'], '*', $pesanBriefing);
