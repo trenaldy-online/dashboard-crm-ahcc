@@ -37,6 +37,12 @@ return [
 
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3-flash-preview'),
+    ],
+
+    'fonnte' => [
+        'token' => env('FONNTE_TOKEN'),
+        'target_wa' => env('FONNTE_TARGET_WA'),
     ],
 
 ];

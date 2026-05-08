@@ -135,24 +135,39 @@ class PipelineController extends Controller
     {
         $lead = LeadSummary::where('client_number', $request->client_number)->first();
         
-        if ($lead) {
-            // Jika tombol yang ditekan adalah "Selesai Follow Up"
-            if ($request->has('perlu_follow_up')) {
-                $lead->perlu_follow_up = filter_var($request->perlu_follow_up, FILTER_VALIDATE_BOOLEAN);
-                if (!$lead->perlu_follow_up) {
-                    $lead->alasan_follow_up = null; // Bersihkan alasan
-                }
-            }
+        if (!$lead) {
+            return response()->json(['success' => false, 'message' => 'Lead tidak ditemukan'], 404);
+        }
+
+        if ($request->exists('perlu_follow_up')) {
+            $isPerluFollowUp = filter_var($request->perlu_follow_up, FILTER_VALIDATE_BOOLEAN);
+            $lead->perlu_follow_up = $isPerluFollowUp;
             
-            // Jika tombol yang ditekan adalah pindah kolom Kanban
-            if ($request->has('pipeline_status')) {
-                $lead->pipeline_status = $request->pipeline_status;
+            // JIKA TOMBOL "SELESAI FOLLOW UP" DITEKAN (nilainya false)
+            if ($isPerluFollowUp === false) {
+                $waktuSekarang = now('Asia/Jakarta')->toDateTimeString();
+
+                $lead->alasan_follow_up = null; 
+                $lead->follow_up_sent_count = (int)$lead->follow_up_sent_count + 1; 
+                $lead->last_follow_up_sent_at = $waktuSekarang;
+                $lead->last_follow_up_at = $waktuSekarang;
+                
+                // CATATAN: Baris $lead->last_cs_reply_at = $waktuSekarang; SUDAH DIHAPUS.
+                // Integritas data chat CS kini tetap terjaga 100%.
             }
-            
-            $lead->save();
-            return response()->json(['success' => true]);
         }
         
-        return response()->json(['success' => false], 404);
+        if ($request->exists('pipeline_status')) {
+            $lead->pipeline_status = $request->pipeline_status;
+            
+            // Auto-clear peringatan jika pasien sudah Deal/Batal
+            if (in_array($request->pipeline_status, ['batal', 'deal'])) {
+                $lead->perlu_follow_up = false;
+                $lead->alasan_follow_up = null;
+            }
+        }
+        
+        $lead->save();
+        return response()->json(['success' => true]);
     }
 }

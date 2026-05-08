@@ -33,11 +33,25 @@ class WaChat extends Model
                 if ($chat->is_me == 1) {
                     // JIKA CS YANG MENGIRIM PESAN
                     $lead->last_cs_reply_at = $waktuChat;
+                    
+                    // VALIDASI REAL: Jika sistem sebelumnya menyuruh follow up, 
+                    // tandai bahwa PA sudah benar-benar mengeksekusinya!
+                    if ($lead->perlu_follow_up) {
+                        $lead->perlu_follow_up = false;
+                        $lead->follow_up_sent_count += 1; // Naikkan counter eksekusi nyata
+                        $lead->last_follow_up_sent_at = $waktuChat;
+                        $lead->alasan_follow_up = null;
+                    }
                 } else {
                     // JIKA PASIEN YANG MENGIRIM PESAN
                     $lead->last_patient_reply_at = $waktuChat;
-                    // Reset step follow up ke 0 karena pasien sudah merespons (tidak ghosting lagi)
-                    $lead->follow_up_step = 0; 
+                    
+                    // Reset counter eksekusi ke nol karena pasien sudah merespons
+                    $lead->follow_up_sent_count = 0; 
+                    
+                    // Bersihkan stempel merah (jika ada)
+                    $lead->perlu_follow_up = false;
+                    $lead->alasan_follow_up = null;
                 }
 
                 // SANGAT PENTING: Gunakan saveQuietly() bukan save() biasa.

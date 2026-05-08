@@ -36,14 +36,15 @@
                     <span class="text-[10px] bg-brand-purple/20 text-brand-purple px-2 py-0.5 rounded font-bold uppercase tracking-wider">H.A.N.A</span>
                 </div>
                 
-                <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
+                <div class="max-h-[400px] overflow-y-auto custom-scrollbar">
                     @if(isset($briefingHistory) && count($briefingHistory) > 0)
                         @foreach($briefingHistory as $history)
                         @php
                             $tglFormat = \Carbon\Carbon::parse($history->tanggal_briefing)->translatedFormat('l, d F Y');
                         @endphp
                         
-                        <button type="button" onclick='bukaRiwayatModal(@json($tglFormat), @json($history->narasi_teks))' class="w-full text-left px-4 py-3 border-b border-dark-border/50 hover:bg-dark-bg transition-colors flex gap-3 items-start group">
+                        <!-- PERUBAHAN 1: Menambahkan parameter ke-3 (xray_log) pada fungsi onClick -->
+                        <button type="button" onclick='bukaRiwayatModal(@json($tglFormat), @json($history->narasi_teks), @json($history->xray_log))' class="w-full text-left px-4 py-3 border-b border-dark-border/50 hover:bg-dark-bg transition-colors flex gap-3 items-start group">
                             
                             <div class="text-lg mt-0.5 opacity-80 group-hover:opacity-100 transition-opacity">👩‍⚕️</div>
                             <div class="flex-1">
@@ -54,6 +55,14 @@
                                     @endif
                                 </div>
                                 <p class="text-[10px] text-gray-500 line-clamp-2 mt-1 leading-relaxed">{{ $history->narasi_teks }}</p>
+                                
+                                <!-- Indikator kecil jika ada X-Ray Log -->
+                                @if(!empty($history->xray_log))
+                                    <div class="mt-2 text-[9px] text-green-500/70 flex items-center gap-1">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                        Log X-Ray Tersedia
+                                    </div>
+                                @endif
                             </div>
                         </button>
                         @endforeach
@@ -101,18 +110,44 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // 3. Fungsi Buka Modal Riwayat
-    window.bukaRiwayatModal = function(tanggal, teks) {
+    // 3. Fungsi Buka Modal Riwayat menerima parameter `xray`
+    window.bukaRiwayatModal = function(tanggal, teks, xray = null) {
         const briefingModal = document.getElementById('briefing-modal');
         const briefingContent = document.getElementById('briefing-modal-content');
         
         if(briefingModal && briefingContent) {
-            // Cari elemen teks di dalam modal
             const dateEl = briefingContent.querySelector('p'); // Tag P untuk tanggal
             const textEl = briefingContent.querySelector('div.whitespace-pre-wrap'); // Tag Div untuk narasi
             
             if(dateEl) dateEl.innerText = '🗓️ ' + tanggal;
             if(textEl) textEl.innerHTML = '"' + teks.replace(/\n/g, '<br>') + '"';
+
+            // --- LOGIKA INJEKSI KOTAK TERMINAL X-RAY ---
+            // 1. Hapus kotak X-Ray lama jika ada
+            const oldTerminal = document.getElementById('xray-terminal-box');
+            if(oldTerminal) oldTerminal.remove();
+
+            // 2. Jika tanggal ini memiliki data X-Ray, sisipkan kotak terminal baru
+            if(xray) {
+                // PERBAIKAN CSS DI SINI: Tambahkan `shrink-0` dan `h-[300px]`
+                const terminalHTML = `
+                <div id="xray-terminal-box" class="mt-8 border border-gray-700/50 rounded-xl overflow-hidden shadow-inner shrink-0">
+                    <div class="bg-gray-900 px-4 py-3 border-b border-gray-700/50 flex justify-between items-center">
+                        <span class="text-xs text-gray-400 font-bold uppercase tracking-wider flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            LOG TELEMETRI SISTEM H.A.N.A
+                        </span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#22c55e]"></span>
+                    </div>
+                    <div class="bg-[#0d1117] p-4 h-[300px] overflow-y-auto custom-scrollbar block">
+                        <pre class="text-[#3fb950] text-xs whitespace-pre-wrap leading-relaxed m-0" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${xray}</pre>
+                    </div>
+                </div>`;
+                
+                // Menempelkan kotak terminal tepat di bawah teks narasi
+                if(textEl) textEl.insertAdjacentHTML('afterend', terminalHTML);
+            }
+            // -------------------------------------------
 
             // Buka Modal
             briefingModal.classList.remove('hidden');
@@ -124,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Tutup dropdown lonceng
             if(dropNotif) tutupDropdown();
         } else {
-            // Pengaman darurat: Jika modal tidak ada di halaman ini, munculkan pop-up standar browser
+            // Pengaman darurat
             alert("Instruksi H.A.N.A (" + tanggal + "):\n\n" + teks);
         }
     };

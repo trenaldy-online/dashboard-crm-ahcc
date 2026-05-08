@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\LeadSummary;
 use App\Models\DailyBriefing;
 use Carbon\Carbon;
+use App\Models\WaChat;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -16,249 +17,548 @@ class HanaMorningScan extends Command
 
     public function handle()
     {
-        $this->info('Memulai pengecekan jadwal H.A.N.A...');
         $now = Carbon::now('Asia/Jakarta');
 
-        // ==========================================
-        // GERBANG 1: CEK SABTU & MINGGU
-        // ==========================================
+        $xrayText = "=========================================\n";
+        $xrayText .= "🚀 LOG X-RAY H.A.N.A (" . $now->format('d M Y H:i') . ")\n";
+        $xrayText .= "=========================================\n\n";
+
+        $this->info('=========================================');
+        $this->info('🚀 MEMULAI H.A.N.A X-RAY MODE');
+        $this->info('=========================================');
+
         if ($now->isWeekend()) {
-            $this->info('Hari ini akhir pekan (Sabtu/Minggu). H.A.N.A libur dan tidak mengirim briefing.');
-            return 0; 
+            $this->info('Hari ini akhir pekan. H.A.N.A libur.');
+            return 0;
         }
 
-        // ==========================================
-        // GERBANG 2: CEK LIBUR NASIONAL / CUTI KLINIK
-        // ==========================================
-        $tanggalHariIni = $now->format('Y-m-d');
-        
-        $hariLibur = [
-            '2026-05-01', // Hari Buruh
-            '2026-05-14', // Kenaikan Isa Almasih
-            '2026-05-24', // Waisak
-            '2026-06-01', // Hari Lahir Pancasila
-            '2026-08-17', // Hari Kemerdekaan RI
-            '2026-12-25', // Hari Raya Natal
-        ];
+        $holidayCheck = $this->isIndonesianHoliday($now);
 
-        if (in_array($tanggalHariIni, $hariLibur)) {
-            $this->info("Hari ini Libur Nasional ($tanggalHariIni). H.A.N.A libur.");
-            return 0; 
+        if ($holidayCheck['is_holiday']) {
+            $holidayName = implode(', ', $holidayCheck['holiday_names']);
+
+            $this->info("Hari ini Libur Nasional/Cuti Bersama: {$holidayName}. H.A.N.A libur.");
+            return 0;
         }
 
-        // ==========================================
-        // PROSES UTAMA
-        // ==========================================
-        $this->info('Jadwal aktif. Mengumpulkan data untuk Morning Briefing...');
-        
-        $kemarin = $now->copy()->subDay();
+        $kemarinStart = $now->copy()->subDay()->startOfDay();
+        $kemarinEnd = $now->copy()->subDay()->endOfDay();
 
-        // 1. REKAP DATA KEMARIN (Berdasarkan updated_at karena ini cuma untuk statistik, bukan acuan timer)
-        $leadsKemarin = LeadSummary::whereDate('updated_at', $kemarin->toDateString())->get();
-        $totalChat = $leadsKemarin->count();
-        
-        $tanyaKemo = 0; $tanyaRT = 0; $tanyaKonsul = 0; $tanyaAwam = 0;
-        foreach($leadsKemarin as $lead) {
+        /**
+         * 1. Total chat aktif yang ditangani kemarin:
+         * Nomor unik yang memiliki pesan dari CS/PA atau pasien pada hari kemarin.
+         */
+        $totalChatDitanggapi = WaChat::whereBetween('chat_time', [$kemarinStart, $kemarinEnd])
+            ->distinct('client_number')
+            ->count('client_number');
+
+        /**
+         * 2. Ambil chat pasien yang masuk kemarin.
+         */
+        $chatPasienKemarin = WaChat::whereBetween('chat_time', [$kemarinStart, $kemarinEnd])
+            ->where('is_me', false)
+            ->orderBy('chat_time', 'asc')
+            ->get();
+
+        $nomorPasienKemarin = $chatPasienKemarin
+            ->pluck('client_number')
+            ->unique()
+            ->values();
+
+        /**
+         * 3. Chat unik baru masuk kemarin
+         * Artinya: nomor yang first incoming chat-nya terjadi kemarin.
+         */
+        $nomorBaruKemarin = collect();
+
+        foreach ($nomorPasienKemarin as $nomor) {
+            $firstPatientChat = WaChat::where('client_number', $nomor)
+                ->where('is_me', false)
+                ->orderBy('chat_time', 'asc')
+                ->first();
+
+            if (
+                $firstPatientChat &&
+                Carbon::parse($firstPatientChat->chat_time, 'Asia/Jakarta')->betweenIncluded($kemarinStart, $kemarinEnd)
+            ) {
+                $nomorBaruKemarin->push($nomor);
+            }
+        }
+
+        $totalChatUnikBaru = $nomorBaruKemarin->count();
+
+        /**
+         * 4. Klasifikasi sumber chat baru:
+         * Google  = ada G-ID
+         * Facebook = ada F-ID
+         * Organik = tidak ada G-ID/F-ID
+         */
+        $totalGoogle = 0;
+        $totalFacebook = 0;
+        $totalOrganik = 0;
+
+        foreach ($nomorBaruKemarin as $nomor) {
+            $textGabungan = WaChat::where('client_number', $nomor)
+                ->where('is_me', false)
+                ->pluck('message')
+                ->implode(' ');
+
+            $textGabungan = strtoupper($textGabungan);
+
+            if (str_contains($textGabungan, 'G-ID')) {
+                $totalGoogle++;
+            } elseif (str_contains($textGabungan, 'F-ID')) {
+                $totalFacebook++;
+            } else {
+                $totalOrganik++;
+            }
+        }
+
+        /**
+         * 5. Kategori minat dari chat baru kemarin
+         * Diambil dari LeadSummary berdasarkan nomor baru kemarin.
+         */
+        $leadsBaruKemarin = LeadSummary::whereIn('client_number', $nomorBaruKemarin)->get();
+
+        $tanyaKemo = 0;
+        $tanyaRT = 0;
+        $tanyaKonsul = 0;
+        $tanyaAwam = 0;
+
+        foreach ($leadsBaruKemarin as $lead) {
             $minat = strtolower($lead->minat_treatment ?? '');
-            if(str_contains($minat, 'kemo')) $tanyaKemo++;
-            elseif(str_contains($minat, 'radio') || str_contains($minat, 'rt')) $tanyaRT++;
-            elseif(str_contains($minat, 'konsul')) $tanyaKonsul++;
-            else $tanyaAwam++;
+
+            if (str_contains($minat, 'kemo')) {
+                $tanyaKemo++;
+            } elseif (
+                str_contains($minat, 'radioterapi') ||
+                str_contains($minat, 'radio terapi') ||
+                str_contains($minat, 'radiasi') ||
+                str_contains($minat, 'radio')
+            ) {
+                $tanyaRT++;
+            } elseif (str_contains($minat, 'konsul')) {
+                $tanyaKonsul++;
+            } else {
+                $tanyaAwam++;
+            }
         }
 
-        // 2. MENCARI "MANGSA BARU" & PROSES TIMER ANTI-BOCOR
+        $xrayText .= "📊 Rekap Kemarin:\n";
+        $xrayText .= "- Total chat ditanggapi CS/PA: {$totalChatDitanggapi}\n";
+        $xrayText .= "- Chat unik baru masuk: {$totalChatUnikBaru}\n";
+        $xrayText .= "- Google Ads (G-ID): {$totalGoogle}\n";
+        $xrayText .= "- Facebook Ads (F-ID): {$totalFacebook}\n";
+        $xrayText .= "- Organik: {$totalOrganik}\n\n";
+
         $batalOtomatis = [];
         $activePipelines = ['leads_baru', 'edukasi', 'konsultasi'];
 
-        // Gunakan chunkById untuk performa stabil jika data jutaan
-        LeadSummary::whereIn('pipeline_status', $activePipelines)
-            ->chunkById(100, function ($leads) use ($now, &$batalOtomatis) {
-                
-                foreach ($leads as $lead) {
-                    // Abaikan jika pasien minta ditunda
-                    if ($lead->tunda_sampai_tanggal && $now->lt(Carbon::parse($lead->tunda_sampai_tanggal))) {
-                        continue;
-                    }
+        $msg = 'Memulai pemindaian data pasien aktif eligible H.A.N.A...';
+        $this->info($msg);
+        $xrayText .= $msg . "\n";
 
-                    // Logika: Apakah CS yang membalas terakhir? (Berarti pasien ghosting)
-                    $isGhosting = false;
-                    $baselineTime = null;
+        $leadsAktif = LeadSummary::whereIn('pipeline_status', $activePipelines)
+            ->where('is_eligible_for_hana', true)
+            ->get();
 
-                    if ($lead->last_cs_reply_at && (!$lead->last_patient_reply_at || $lead->last_cs_reply_at > $lead->last_patient_reply_at)) {
-                        $isGhosting = true;
-                        $baselineTime = Carbon::parse($lead->last_cs_reply_at);
-                    } elseif ($lead->last_cs_reply_at === null && $lead->last_patient_reply_at === null) {
-                        // Fallback aman untuk data lama yang belum punya jam chat (gunakan updated_at)
-                        $isGhosting = true;
-                        $baselineTime = Carbon::parse($lead->updated_at);
-                    }
+        foreach ($leadsAktif as $lead) {
+            $xrayText .= "-------------------------------------------------\n";
+            $this->info('-------------------------------------------------');
 
-                    if ($isGhosting && $baselineTime) {
-                        $daysGhosting = $now->copy()->startOfDay()->diffInDays($baselineTime->copy()->startOfDay());
-                        $step = $lead->follow_up_step ?? 0; // Default ke 0 jika null
+            $msg = "🔎 Cek Pasien: {$lead->client_number}";
+            $this->info($msg);
+            $xrayText .= $msg . "\n";
 
-                        // MUTLAK: H+14 -> Buang ke Batal
-                        if ($daysGhosting >= 14) {
-                            $lead->update([
-                                'pipeline_status' => 'batal', 
-                                'perlu_follow_up' => false,
-                                'ringkasan' => $lead->ringkasan . "\n[SISTEM]: Auto-batal karena ghosting 14 hari."
-                            ]);
-                            $batalOtomatis[] = $lead->client_number;
-                            Log::info("Lead {$lead->client_number} batal (H+14).");
-                            continue;
-                        }
+            if ($lead->tunda_sampai_tanggal && $now->lt(Carbon::parse($lead->tunda_sampai_tanggal, 'Asia/Jakarta'))) {
+                $msg = "   ⏭️ Di-skip: Pasien minta tunda sampai {$lead->tunda_sampai_tanggal}";
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+                continue;
+            }
 
-                        // JIKA GHOSTING, BUKAN BERARTI TIDAK DI-FOLLOW UP!
-                        // Justru karena ghosting, sistem harus kasih stempel merah untuk mengingatkan PA.
-                        
-                        // H+5 -> Stempel Merah FU Kedua
-                        if ($daysGhosting >= 5 && $step == 1) {
-                            $lead->update([
-                                'perlu_follow_up' => true, 
-                                'follow_up_step' => 2, // Naikkan step agar tidak dikirimi H+5 berkali-kali
-                                'alasan_follow_up' => 'Follow up kedua (H+5)'
-                            ]);
-                            continue;
-                        }
+            if (empty($lead->last_cs_reply_at)) {
+                $msg = '   ⏭️ Di-skip: Belum pernah dibalas CS.';
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+                continue;
+            }
 
-                        // H+2 -> Stempel Merah FU Pertama
-                        if ($daysGhosting >= 2 && $step == 0) {
-                            $lead->update([
-                                'perlu_follow_up' => true, 
-                                'follow_up_step' => 1, // Naikkan step
-                                'alasan_follow_up' => 'Follow up pertama (H+2)'
-                            ]);
-                            continue;
-                        }
-                    } else {
-                        // Jika pasien yang chat terakhir, pastikan stempelnya bersih dan stepnya 0
-                        // (Meskipun di model WaChat sudah direset, ini untuk double check)
-                        if ($lead->perlu_follow_up == true || $lead->follow_up_step != 0) {
-                             $lead->update(['perlu_follow_up' => false, 'follow_up_step' => 0, 'alasan_follow_up' => null]);
-                        }
-                    }
+            $isGhosting = false;
+            $waktuCS = Carbon::parse($lead->last_cs_reply_at, 'Asia/Jakarta');
+
+            $msg = '   Waktu CS Balas: ' . $waktuCS->format('Y-m-d H:i');
+            $this->info($msg);
+            $xrayText .= $msg . "\n";
+
+            if (empty($lead->last_patient_reply_at)) {
+                $isGhosting = true;
+
+                $msg = '   Waktu Pasien Balas: KOSONG. Ghosting terkonfirmasi.';
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+            } else {
+                $waktuPasien = Carbon::parse($lead->last_patient_reply_at, 'Asia/Jakarta');
+
+                $msg = '   Waktu Pasien Balas: ' . $waktuPasien->format('Y-m-d H:i');
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+
+                if ($waktuCS->gt($waktuPasien)) {
+                    $isGhosting = true;
+
+                    $msg = '   Status: Ghosting. CS lebih baru dari pasien.';
+                    $this->info($msg);
+                    $xrayText .= $msg . "\n";
+                } else {
+                    $msg = '   Status: Aman. Pasien yang terakhir membalas.';
+                    $this->info($msg);
+                    $xrayText .= $msg . "\n";
                 }
-            });
+            }
 
-        // 3. AMBIL DETAIL SEMUA TUNGGAKAN
-        $pasienHutang = LeadSummary::whereIn('pipeline_status', ['leads_baru', 'edukasi', 'konsultasi'])
+            if (!$isGhosting) {
+                if ($lead->perlu_follow_up == true) {
+                    $lead->perlu_follow_up = false;
+                    $lead->alasan_follow_up = null;
+                    $lead->save();
+
+                    $msg = '   🧹 Membersihkan status perlu_follow_up karena pasien sudah membalas.';
+                    $this->info($msg);
+                    $xrayText .= $msg . "\n";
+                }
+
+                continue;
+            }
+
+            $daysGhosting = $waktuCS
+                ->copy()
+                ->startOfDay()
+                ->diffInDays($now->copy()->startOfDay());
+
+            $sentCount = (int) ($lead->follow_up_sent_count ?? 0);
+
+            $msg = "   Lama Ghosting: {$daysGhosting} Hari | Sent Count: {$sentCount}";
+            $this->info($msg);
+            $xrayText .= $msg . "\n";
+
+            if ($daysGhosting >= 14) {
+                $lead->pipeline_status = 'batal';
+                $lead->perlu_follow_up = false;
+                $lead->alasan_follow_up = null;
+                $lead->is_eligible_for_hana = false;
+                $lead->conversation_outcome = 'closed';
+                $lead->ringkasan = ($lead->ringkasan ?? '') . "\n[SISTEM]: Auto-batal karena ghosting 14 hari.";
+                $lead->save();
+
+                $batalOtomatis[] = $lead->client_number;
+
+                $msg = '   [!] DIEKSEKUSI: Auto Batal H+14.';
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+
+                continue;
+            }
+
+            if ($sentCount === 1) {
+                if (empty($lead->last_follow_up_sent_at)) {
+                    $msg = '   ⚠️ Sent Count = 1, tapi last_follow_up_sent_at kosong. FU kedua belum bisa dihitung.';
+                    $this->info($msg);
+                    $xrayText .= $msg . "\n";
+                    continue;
+                }
+
+                $lastFollowUp = Carbon::parse($lead->last_follow_up_sent_at, 'Asia/Jakarta');
+
+                $daysSinceLastFollowUp = $lastFollowUp
+                    ->copy()
+                    ->startOfDay()
+                    ->diffInDays($now->copy()->startOfDay());
+
+                $msg = "   Lama Sejak FU-1: {$daysSinceLastFollowUp} Hari";
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+
+                if ($daysSinceLastFollowUp >= 3) {
+                    $lead->perlu_follow_up = true;
+                    $lead->alasan_follow_up = 'Follow up kedua (Sudah 3 hari sejak FU pertama dikirim)';
+                    $lead->save();
+
+                    $msg = '   [!] DIEKSEKUSI: Masuk Follow Up Ke-2.';
+                    $this->info($msg);
+                    $xrayText .= $msg . "\n";
+                    continue;
+                }
+            }
+
+            if ($sentCount === 0 && $daysGhosting >= 2) {
+                $lead->perlu_follow_up = true;
+                $lead->alasan_follow_up = 'Follow up pertama (Sudah masuk zona H+2)';
+                $lead->save();
+
+                $msg = '   [!] DIEKSEKUSI: Masuk Follow Up Ke-1.';
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+                continue;
+            }
+
+            if ($sentCount >= 2) {
+                $msg = '   ⚪ Sudah pernah FU minimal 2 kali. Menunggu H+14 atau respon pasien.';
+                $this->info($msg);
+                $xrayText .= $msg . "\n";
+                continue;
+            }
+
+            $msg = '   ⚪ Tidak ada tindakan. Belum masuk zona follow-up.';
+            $this->info($msg);
+            $xrayText .= $msg . "\n";
+        }
+
+        $xrayText .= "=========================================\n";
+
+        $this->info('=========================================');
+        $msg = '🏁 PEMINDAIAN SELESAI. Menghitung Hutang...';
+        $this->info($msg);
+        $xrayText .= $msg . "\n";
+
+        $pasienHutang = LeadSummary::whereIn('pipeline_status', $activePipelines)
+            ->where('is_eligible_for_hana', true)
             ->where('perlu_follow_up', true)
             ->get();
-            
+
         $totalHutang = $pasienHutang->count();
 
-        $detailHutang = "";
+        $msg = "Total Hutang Ditemukan: {$totalHutang}";
+        $this->info($msg);
+        $xrayText .= $msg . "\n";
+
+        $detailHutang = '';
+
         if ($totalHutang > 0) {
             foreach ($pasienHutang as $p) {
                 $nomor = $p->client_number;
                 $riwayat = $p->kendala_utama ?? 'Belum ada data detail.';
                 $tugas = $p->alasan_follow_up ?? 'Butuh disapa kembali.';
-                $detailHutang .= "- Pasien $nomor | Riwayat: $riwayat | Status: $tugas\n";
+                $topik = $p->topik_follow_up ?? null;
+
+                $detailHutang .= "- Pasien {$nomor} | Riwayat: {$riwayat} | Status: {$tugas}";
+
+                if (!empty($topik)) {
+                    $detailHutang .= " | Arahan: {$topik}";
+                }
+
+                $detailHutang .= "\n";
             }
         }
 
-        // 4. SUSUN PROMPT UNTUK GEMINI
-        $prompt = "Anda adalah H.A.N.A, Kepala Patient Advisor di Klinik Kanker. Anda harus membuat DUA pesan yang dipisahkan SECARA KETAT dengan teks penanda: |||SPLIT|||\n\n" .
-                  "BAGIAN 1: Briefing Pagi\n" .
-                  "- Ringkas data kemarin: Total $totalChat interaksi ($tanyaKemo Kemo, $tanyaRT RT, $tanyaKonsul Konsul, $tanyaAwam Awam).\n" .
-                  "- Sebutkan bahwa ada $totalHutang pasien yang wajib di-follow up hari ini.\n" .
-                  "- Tulis paragraf pembuka yang ramah dan memotivasi tim PA. JANGAN menuliskan daftar pasien di Bagian 1 ini.\n\n" .
-                  "|||SPLIT|||\n\n" .
-                  "BAGIAN 2: Daftar Follow Up\n" .
-                  "- Berikut adalah data pasien yang butuh dihubungi:\n$detailHutang\n" .
-                  "- Buatkan list (daftar) yang rapi. Tulis nomor WA-nya, jelaskan riwayatnya secara singkat, lalu buatkan 💡 Saran Chat copywriting yang pas dan empatik agar tinggal di-copy paste oleh PA.\n" .
-                  "- Jika data pasien kosong, cukup tulis: 'Semua aman! Tidak ada pasien yang menggantung hari ini.'\n\n" .
-                  "ATURAN FORMAT: Gunakan tag HTML <b>teks</b> untuk menebalkan teks yang penting.";
+        $this->info('Mengirim ke AI Gemini...');
 
-        $apiKey = env('GEMINI_API_KEY');
-        $response = Http::withHeaders(['Content-Type' => 'application/json'])
-            ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={$apiKey}", [
-                'contents' => [['parts' => [['text' => $prompt]]]]
-            ]);
+        $prompt =
+            "Anda adalah H.A.N.A, Kepala Patient Advisor di Klinik Kanker. Anda harus membuat DUA pesan yang dipisahkan SECARA KETAT dengan teks penanda: |||SPLIT|||\n\n" .
+            "BAGIAN 1: Briefing Pagi\n" .
+            "- Ringkas data operasional kemarin:\n" .
+            "  • Total chat yang ditangani tim PA/CS: {$totalChatDitanggapi} percakapan aktif.\n" .
+            "  • Chat unik baru masuk: {$totalChatUnikBaru} pasien.\n" .
+            "  • Sumber chat baru: {$totalGoogle} dari Google Ads/G-ID, {$totalFacebook} dari Facebook/F-ID, dan {$totalOrganik} organik/tanpa G-ID atau F-ID.\n" .
+            "  • Minat chat baru: {$tanyaKemo} Kemo, {$tanyaRT} Radioterapi/RT, {$tanyaKonsul} Konsul, dan {$tanyaAwam} Awam/Belum jelas.\n" .
+            "- Sebutkan bahwa ada {$totalHutang} pasien yang wajib di-follow up hari ini.\n" .
+            "- Tulis paragraf pembuka yang ramah dan memotivasi tim PA. JANGAN menuliskan daftar pasien di Bagian 1.\n\n" .
+            "|||SPLIT|||\n\n" .
+            "BAGIAN 2: Daftar Follow Up\n" .
+            "- Berikut adalah data pasien yang butuh dihubungi:\n{$detailHutang}\n" .
+            "- Buatkan list yang rapi. Tulis nomor WA, riwayat singkat, alasan follow-up, dan saran chat empatik.\n" .
+            "- Jangan mengarang fasilitas seperti diskon, penjemputan, penginapan, atau layanan yang tidak disebutkan di data.\n" .
+            "- Jangan menjanjikan kesembuhan.\n" .
+            "- Jika data kosong, tulis: 'Semua aman! Tidak ada pasien yang menggantung hari ini.'\n\n" .
+            "ATURAN FORMAT: Gunakan tag HTML <b>teks</b> untuk menebalkan teks.";
+
+        $geminiApiKey = config('services.gemini.api_key');
+        $geminiModel = config('services.gemini.model', 'gemini-3-flash-preview');
 
         $narasi = "Gagal memuat narasi dari AI.";
-        if ($response->successful()) {
-            $result = $response->json('candidates.0.content.parts.0.text');
-            if ($result) $narasi = $result;
+
+        try {
+            $response = Http::timeout(30)
+                ->retry(2, 1000)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                ])
+                ->post("https://generativelanguage.googleapis.com/v1beta/models/{$geminiModel}:generateContent?key={$geminiApiKey}", [
+                    'contents' => [
+                        [
+                            'parts' => [
+                                [
+                                    'text' => $prompt,
+                                ],
+                            ],
+                        ],
+                    ],
+                ]);
+
+            if ($response->successful()) {
+                $result = $response->json('candidates.0.content.parts.0.text');
+
+                if (!empty($result)) {
+                    $narasi = $result;
+                    $xrayText .= "✅ AI Gemini merespons dengan sukses.\n";
+                }
+            } else {
+                $this->error('Gemini Error: ' . $response->body());
+                Log::error("Gemini API Error Status {$response->status()}: " . $response->body());
+                $xrayText .= "❌ AI Gemini Error: " . $response->body() . "\n";
+            }
+        } catch (\Exception $e) {
+            $this->error('Gemini Exception: ' . $e->getMessage());
+            Log::error('Gemini API Exception: ' . $e->getMessage());
+            $xrayText .= "❌ AI Gemini Exception: " . $e->getMessage() . "\n";
         }
 
-        // 5. PECAH PESAN
         $pesanArray = explode('|||SPLIT|||', $narasi);
+
         $pesanBriefing = trim($pesanArray[0] ?? $narasi);
         $pesanFollowUp = trim($pesanArray[1] ?? '');
 
-        // Simpan ke Database
-        $narasiDb = str_replace('|||SPLIT|||', "\n\n=== DAFTAR TUGAS FOLLOW UP ===\n\n", $narasi);
+        $narasiDb = str_replace(
+            '|||SPLIT|||',
+            "\n\n=== DAFTAR TUGAS FOLLOW UP ===\n\n",
+            $narasi
+        );
+
         $briefing = DailyBriefing::updateOrCreate(
-            ['tanggal_briefing' => $now->toDateString()],
+            [
+                'tanggal_briefing' => $now->toDateString(),
+            ],
             [
                 'narasi_teks' => trim($narasiDb),
+                'xray_log' => $xrayText,
                 'data_mentah' => [
-                    'total'  => $totalChat, 
-                    'hutang' => $totalHutang, 
-                    'batal'  => count($batalOtomatis)
+                    'total_chat_ditanggapi' => $totalChatDitanggapi,
+                    'chat_unik_baru' => $totalChatUnikBaru,
+                    'google_gid' => $totalGoogle,
+                    'facebook_fid' => $totalFacebook,
+                    'organik' => $totalOrganik,
+                    'minat_kemo' => $tanyaKemo,
+                    'minat_rt' => $tanyaRT,
+                    'minat_konsul' => $tanyaKonsul,
+                    'minat_awam' => $tanyaAwam,
+                    'hutang' => $totalHutang,
+                    'batal' => count($batalOtomatis),
                 ],
-                'is_wa_sent' => false
+                'is_wa_sent' => false,
             ]
         );
 
-        $this->info('Data disimpan. Mengirim ke WhatsApp...');
+        $fonnteToken = config('services.fonnte.token');
+        $targetWa = config('services.fonnte.target_wa');
 
-        // 6. PENGIRIMAN WHATSAPP VIA FONNTE
-        $fonnteToken = 'ktLApTVPLY96LLz9u1wx'; 
-        $targetWa = trim('083831169957'); 
-        
-        $pesanWa1 = str_replace(['<b>', '</b>', '<strong>', '</strong>'], '*', $pesanBriefing);
-        $teksFinal1 = "👩‍⚕️ *H.A.N.A MORNING BRIEFING*\n🗓️ _{$now->translatedFormat('l, d F Y')}_\n──────────────────\n\n" . strip_tags($pesanWa1);
+        $pesanWa1 = str_replace(
+            ['<b>', '</b>', '<strong>', '</strong>'],
+            '*',
+            $pesanBriefing
+        );
+
+        $teksFinal1 =
+            "👩‍⚕️ *H.A.N.A MORNING BRIEFING*\n" .
+            "🗓️ _{$now->translatedFormat('l, d F Y')}_\n" .
+            "──────────────────\n\n" .
+            strip_tags($pesanWa1);
+
+        $this->info('Mengirim WA ke Fonnte...');
 
         try {
-            // KIRIM PESAN 1
-            $resp1 = Http::withHeaders(['Authorization' => $fonnteToken])->asForm()->post('https://api.fonnte.com/send', [
-                'target' => $targetWa,
-                'message' => $teksFinal1,
-            ]);
-
-            $pesanKeduaTerkirim = false;
-
-            // KIRIM PESAN 2 (HANYA JIKA ADA TUNGGAKAN)
-            if (!empty($pesanFollowUp) && $totalHutang > 0) {
-                sleep(2); 
-                
-                $pesanWa2 = str_replace(['<b>', '</b>', '<strong>', '</strong>'], '*', $pesanFollowUp);
-                $teksFinal2 = "🎯 *DAFTAR EKSEKUSI FOLLOW-UP HARI INI*\n──────────────────\n\n" . strip_tags($pesanWa2) . "\n\n──────────────────\n💡 _Ayo tim, selesaikan hari ini agar pasien merasa diperhatikan!_ 💪";
-                
-                $resp2 = Http::withHeaders(['Authorization' => $fonnteToken])->asForm()->post('https://api.fonnte.com/send', [
+            $resp1 = Http::timeout(15)
+                ->withHeaders([
+                    'Authorization' => $fonnteToken,
+                ])
+                ->asForm()
+                ->post('https://api.fonnte.com/send', [
                     'target' => $targetWa,
-                    'message' => $teksFinal2,
+                    'message' => $teksFinal1,
                 ]);
 
-                if ($resp2->successful()) {
-                    $pesanKeduaTerkirim = true;
-                } else {
-                    $this->error('⚠️ Pesan kedua gagal dikirim ke Fonnte: ' . $resp2->body());
+            if (!empty($pesanFollowUp) && $totalHutang > 0) {
+                sleep(2);
+
+                $pesanWa2 = str_replace(
+                    ['<b>', '</b>', '<strong>', '</strong>'],
+                    '*',
+                    $pesanFollowUp
+                );
+
+                $teksFinal2 =
+                    "🎯 *DAFTAR EKSEKUSI FOLLOW-UP HARI INI*\n" .
+                    "──────────────────\n\n" .
+                    strip_tags($pesanWa2) .
+                    "\n\n──────────────────\n" .
+                    "💡 _Ayo tim, selesaikan hari ini agar pasien merasa diperhatikan!_ 💪";
+
+                $resp2 = Http::timeout(15)
+                    ->withHeaders([
+                        'Authorization' => $fonnteToken,
+                    ])
+                    ->asForm()
+                    ->post('https://api.fonnte.com/send', [
+                        'target' => $targetWa,
+                        'message' => $teksFinal2,
+                    ]);
+
+                if (!$resp2->successful()) {
+                    Log::error('Pesan kedua gagal dikirim ke Fonnte: ' . $resp2->body());
+                    $this->error('Pesan kedua gagal dikirim ke Fonnte.');
                 }
-            } else {
-                $this->info("ℹ️ Pesan Daftar Follow Up di-skip karena tidak ada tunggakan (Total Hutang: $totalHutang).");
             }
 
-            // UPDATE STATUS & LOG TERMINAL
             if ($resp1->successful()) {
-                $briefing->update(['is_wa_sent' => true]);
-                
-                if ($pesanKeduaTerkirim) {
-                    $this->info('✅ BINGO! Dua pesan WA (Briefing & Follow Up) berhasil dikirim!');
-                } else {
-                    $this->info('✅ BINGO! Hanya pesan pertama (Briefing) yang dikirim.');
-                }
-            } else {
-                $this->error('❌ Pesan pertama gagal dikirim ke Fonnte: ' . $resp1->body());
-            }
+                $briefing->update([
+                    'is_wa_sent' => true,
+                ]);
 
+                $this->info('✅ BINGO! Proses H.A.N.A Selesai.');
+            } else {
+                Log::error('Pesan pertama gagal dikirim ke Fonnte: ' . $resp1->body());
+                $this->error('Pesan pertama gagal dikirim ke Fonnte.');
+            }
         } catch (\Exception $e) {
-            $this->error('❌ Sistem error saat mengirim WA: ' . $e->getMessage());
+            $this->error('Sistem error WA: ' . $e->getMessage());
+            Log::error('Sistem error saat mengirim WA: ' . $e->getMessage());
         }
 
         return 0;
+    }
+
+    private function isIndonesianHoliday(Carbon $date): array
+    {
+        try {
+            $response = Http::timeout(10)
+                ->get('https://libur.deno.dev/api', [
+                    'year' => $date->year,
+                    'month' => $date->month,
+                    'day' => $date->day,
+                ]);
+
+            if (!$response->successful()) {
+                return [
+                    'is_holiday' => false,
+                    'holiday_names' => [],
+                    'source' => 'api_failed',
+                ];
+            }
+
+            $data = $response->json();
+
+            return [
+                'is_holiday' => $data['is_holiday'] ?? false,
+                'holiday_names' => $data['holiday_list'] ?? [],
+                'source' => 'api',
+            ];
+        } catch (\Exception $e) {
+            Log::warning('Gagal cek hari libur Indonesia: ' . $e->getMessage());
+
+            return [
+                'is_holiday' => false,
+                'holiday_names' => [],
+                'source' => 'exception',
+            ];
+        }
     }
 }

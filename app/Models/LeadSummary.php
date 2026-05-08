@@ -33,7 +33,14 @@ class LeadSummary extends Model
         'fbclid',
         'follow_up_count',
         'tunda_sampai_tanggal',
-        'google_sheet_sent_at', // <-- Kolom baru sudah masuk
+        'google_sheet_sent_at',
+        'patient_message_count',
+        'conversation_outcome',
+        'is_eligible_for_hana',
+        'topik_follow_up',
+        'last_follow_up_sent_at',
+        'last_follow_up_at',
+        'follow_up_sent_count',
     ];
 
     // OPSIONAL TAPI DIREKOMENDASIKAN: Memastikan tipe data konsisten
