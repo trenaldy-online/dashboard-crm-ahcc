@@ -1,58 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 👩‍⚕️ H.A.N.A - AI-Powered CRM & WhatsApp Telemetry
+**Enterprise-Grade WhatsApp CRM for AHCC (Adi Husada Cancer Center)**
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+H.A.N.A (Head of Patient Advisor / AI CRM) adalah sistem *Customer Relationship Management* cerdas berbasis kecerdasan buatan (Google Gemini API) dan integrasi WhatsApp (Fonnte). Sistem ini dirancang secara khusus untuk memonitor, menganalisis, dan menjadwalkan tindakan *follow-up* pasien kanker secara otomatis, guna mengurangi *Junk Leads* dan meningkatkan efisiensi operasional tim Patient Advisor.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## ✨ Fitur Utama
+- **AI Conversation Classification:** Pemilahan chat otomatis (*Heuristic + Regex + AI*) untuk memisahkan *Engaged Leads*, *Junk Leads*, dan percakapan yang sudah selesai (*Resolved*).
+- **Smart Follow-up Radar:** Mendeteksi pasien yang melakukan *ghosting* dan menjadwalkan *follow-up* bertingkat (H+2, H+5) atau pembatalan otomatis (H+14).
+- **Daily AI Morning Briefing:** Merangkum interaksi harian dan mengirimkan instruksi tugas via *broadcast* WhatsApp kepada tim setiap pagi.
+- **Business Intelligence Dashboard:** Visualisasi data analitik untuk memonitor kualitas *lead*, sumber lalu lintas, dan *pain points* (kendala) pasien secara *real-time*.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 🗺️ Struktur Halaman & Fungsinya
 
-## Learning Laravel
+Sistem ini memiliki beberapa antarmuka utama yang dirancang dengan estetika modern (*Dark Mode / Cyberpunk*):
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### 1. Dashboard Telemetry & Morning Briefing (`/dashboard`)
+Pusat komando harian untuk tim Patient Advisor (PA).
+* **Surat Instruksi H.A.N.A:** *Modal popup* berisi ringkasan harian dan motivasi dari AI.
+* **Daftar Eksekusi Follow-Up:** Menampilkan pasien mana saja yang wajib disapa hari ini lengkap dengan saran *copywriting* dari AI.
+* **Live Feed & Traffic Chart:** Memantau grafik pesan masuk dan ringkasan percakapan terakhir yang ditarik dari ekstensi WhatsApp.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### 2. Kanban Pipeline (`/pipeline`)
+Area kerja operasional (*Lead Management*).
+* **Kolom Status:** Menggeser pasien antar tahap (Leads Baru ➔ Edukasi ➔ Konsultasi ➔ Deal/Batal).
+* **Tombol "Selesai Follow Up":** Fitur krusial untuk mengeksekusi tugas. Tombol ini memperbarui waktu `last_cs_reply_at` dan `last_follow_up_sent_at` secara akurat untuk mereset radar peringatan H.A.N.A.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+### 3. Business Intelligence (B.I) Analitik (`/laporan`)
+Dasbor khusus untuk Manajemen dan Supervisor (SPV).
+* **Kualitas Lead (Pie/Doughnut Chart):** Melihat rasio pasien potensial (*Engaged*) berbanding pasien *Junk* atau nyasar (*Redirected*).
+* **Top Kendala Utama (Horizontal Bar Chart):** Memetakan alasan keraguan pasien (Biaya, Jarak, Takut Efek Samping, dll) untuk keperluan strategi *Marketing*.
 
-## Agentic Development
+---
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## 💻 Panduan Instalasi & Setup
 
+Ikuti langkah-langkah di terminal Anda untuk menjalankan proyek ini di *server* lokal atau *production*:
+
+### 1. Kloning Repositori & Instalasi Dependensi
 ```bash
-composer require laravel/boost --dev
+git clone [https://github.com/username-anda/nama-repo-hana.git](https://github.com/username-anda/nama-repo-hana.git)
+cd nama-repo-hana
+composer install
+npm install
+npm run build
 
-php artisan boost:install
-```
+Konfigurasi Environment (.env)
+Salin file konfigurasi bawaan dan sesuaikan nilainya:
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Bash
+cp .env.example .env
+php artisan key:generate
+Wajib tambahkan API Keys berikut di dalam file .env Anda:
 
-## Contributing
+Cuplikan kode
+# Database
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=nama_database_anda
+DB_USERNAME=root
+DB_PASSWORD=
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# Gemini API (AI Otak H.A.N.A)
+GEMINI_API_KEY="isi_dengan_api_key_google_studio_anda"
 
-## Code of Conduct
+# Fonnte API (WhatsApp Broadcast)
+FONNTE_TOKEN="isi_dengan_token_fonnte_anda"
+FONNTE_TARGET_WA="081234567890" # Nomor grup atau SPV tujuan
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Perintah Terminal Operasional (Wajib Tahu)
+Agar H.A.N.A dapat bekerja dengan maksimal (terutama untuk pemrosesan AI massal dan scan pagi), Anda perlu menjalankan perintah berikut:
 
-## Security Vulnerabilities
+1. Menjalankan Antrean Proses AI (Job Worker)
+Sistem menggunakan Bus::batch untuk memanggil API Gemini. Anda wajib menjalankan antrean (queue) di latar belakang agar fitur "Rekap Chat Hari Ini" bisa memproses ringkasan tanpa membuat browser loading lama:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Bash
+php artisan queue:work
+(Catatan: Di server production, gunakan Supervisor agar perintah ini berjalan terus-menerus 24/7).
 
-## License
+2. Membangunkan H.A.N.A (Morning Scan)
+Perintah ini bertugas menyeleksi database, mencari pasien ghosting, menghitung Actionable Metrics, memanggil AI pembuat briefing, dan mengirim WhatsApp ke tim PA.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Bash
+php artisan hana:morning-scan
+(Catatan: Daftarkan perintah ini ke dalam Cron Job atau Laravel Scheduler (routes/console.php) agar tereksekusi otomatis setiap jam 07:00 pagi).
+
+3. Sinkronisasi Data Historis (Tinker)
+Hanya dilakukan SATU KALI SAJA jika Anda memiliki data obrolan lama yang ingin diikutsertakan ke dalam sistem filter kelas H.A.N.A (Junk vs Engaged):
+
+Bash
+php artisan tinker
+Lalu paste script One-Liner yang mengklasifikasikan conversation_outcome ke terminal Tinker.
+
+Developed with ❤️ for Better Patient Care at AHCC.
