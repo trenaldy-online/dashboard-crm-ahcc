@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ChatListController;
 use App\Http\Controllers\TelemetryController;
 use App\Http\Controllers\AiBatchController;
+use App\Http\Controllers\ReportController;
 
 // Jadikan halaman Daftar Chat sebagai halaman utama (ketika buka 127.0.0.1:8000)
 Route::get('/', function () {
@@ -32,3 +33,6 @@ Route::get('/pipeline/recap-result', [\App\Http\Controllers\AiBatchController::c
 
 // Rute untuk update manual (override) data pasien di Pipeline
 Route::post('/pipeline/update-manual', [\App\Http\Controllers\PipelineController::class, 'updateManual']);
+
+// Rute untuk halaman Laporan (Report)
+Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');

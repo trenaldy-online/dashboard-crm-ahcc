@@ -37,6 +37,13 @@
                     <svg class="w-5 h-5 {{ request()->is('daftar-chat*') ? 'text-brand-purple' : 'text-gray-500 group-hover:text-brand-purple' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                     <span class="text-sm font-medium">Log Chat Masuk</span>
                 </a>
+
+                <a href="{{ url('/laporan') }}" class="{{ request()->is('laporan*') ? 'bg-dark-surface text-white border-l-2 border-brand-purple' : 'text-gray-400 hover:bg-dark-surface/50 hover:text-white border-l-2 border-transparent' }} flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-all group">
+                    <svg class="w-5 h-5 {{ request()->is('laporan*') ? 'text-brand-purple' : 'text-gray-500 group-hover:text-brand-purple' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1h-2a1 1 0 01-1-1V3zM4 13a1 1 0 011-1h2a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8zM18 8a1 1 0 011-1h2a1 1 0 011 1v13a1 1 0 01-1 1h-2a1 1 0 01-1-1V8z"></path>
+                    </svg>
+                    <span class="text-sm font-medium">Laporan Marketing</span>
+                </a>
             </nav>
         </div>
 
