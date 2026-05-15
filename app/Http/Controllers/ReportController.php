@@ -81,13 +81,24 @@ class ReportController extends Controller
             ->limit(10)
             ->pluck('total', 'minat_treatment');
 
-        // 4. Pipeline Funnel
+        // 4. Kategori Kanker
+        $kategoriKanker = (clone $baseQuery)
+            ->whereNotNull('kategori_kanker')
+            ->where('kategori_kanker', '!=', 'Belum Terdeteksi')
+            ->where('kategori_kanker', '!=', 'Belum Diketahui')
+            ->select('kategori_kanker', DB::raw('count(*) as total'))
+            ->groupBy('kategori_kanker')
+            ->orderByDesc('total')
+            ->pluck('total', 'kategori_kanker');
+
+        // 5. Pipeline Funnel
         $pipelineFunnel = (clone $baseQuery)
+            ->whereNotNull('pipeline_status')
             ->select('pipeline_status', DB::raw('count(*) as total'))
             ->groupBy('pipeline_status')
             ->pluck('total', 'pipeline_status');
-
-        // 5. Channel Source
+            
+        // 6. Channel Source
         $leads = (clone $baseQuery)->get();
 
         $channelSummary = [
@@ -143,7 +154,7 @@ class ReportController extends Controller
                 : 0;
         }
 
-        // 6. Average Lead Score by Source
+        // 7. Average Lead Score by Source
         $leadScoreBySource = [
             'Google Ads' => [],
             'Facebook Ads' => [],
@@ -163,7 +174,7 @@ class ReportController extends Controller
                 : 0;
         }
 
-        // 7. Insight sederhana otomatis
+        // 8. Insight sederhana otomatis
         $insights = $this->generateMarketingInsights(
             $totalLead,
             $eligibleRate,
@@ -191,7 +202,8 @@ class ReportController extends Controller
             'pipelineFunnel',
             'channelSummary',
             'avgLeadScoreBySource',
-            'insights'
+            'insights',
+            'kategoriKanker',
         ));
     }
 

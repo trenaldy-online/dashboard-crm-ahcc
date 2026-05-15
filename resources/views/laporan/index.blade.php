@@ -139,6 +139,30 @@
             <canvas id="minatTreatmentChart"></canvas>
         </div>
     </div>
+
+    <div class="bg-dark-surface border border-dark-border rounded-xl p-6">
+    <div class="flex items-center justify-between mb-6">
+            <h2 class="text-base font-medium text-white">Kategori Kanker Terbanyak</h2>
+
+            <div class="flex items-center gap-2">
+                <button id="kategoriPrev"
+                    class="px-3 py-1 text-xs rounded bg-dark-bg border border-dark-border text-gray-300 hover:text-white">
+                    Prev
+                </button>
+
+                <span id="kategoriPageInfo" class="text-xs text-gray-400"></span>
+
+                <button id="kategoriNext"
+                    class="px-3 py-1 text-xs rounded bg-dark-bg border border-dark-border text-gray-300 hover:text-white">
+                    Next
+                </button>
+            </div>
+        </div>
+
+        <div style="height: 320px;">
+            <canvas id="kategoriKankerChart"></canvas>
+        </div>
+    </div>
 </div>
 
 {{-- INSIGHT --}}
@@ -300,6 +324,87 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
     });
-});
+
+    const dataKategoriKanker = {!! json_encode($kategoriKanker) !!};
+
+    const kategoriLabelsAll = Object.keys(dataKategoriKanker);
+    const kategoriValuesAll = Object.values(dataKategoriKanker);
+
+    let kategoriCurrentPage = 1;
+    const kategoriPerPage = 10;
+    const kategoriTotalPages = Math.ceil(kategoriLabelsAll.length / kategoriPerPage);
+
+    const kategoriCtx = document.getElementById('kategoriKankerChart');
+
+    let kategoriChart = new Chart(kategoriCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Jumlah Lead',
+                data: [],
+                backgroundColor: 'rgba(16, 185, 129, 0.65)',
+                borderColor: 'rgba(16, 185, 129, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 },
+                    grid: { color: '#2A2A2A' }
+                },
+                y: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    function renderKategoriPage(page) {
+        const start = (page - 1) * kategoriPerPage;
+        const end = start + kategoriPerPage;
+
+        const labels = kategoriLabelsAll.slice(start, end);
+        const values = kategoriValuesAll.slice(start, end);
+
+        kategoriChart.data.labels = labels;
+        kategoriChart.data.datasets[0].data = values;
+        kategoriChart.update();
+
+        document.getElementById('kategoriPageInfo').textContent =
+            `Page ${kategoriCurrentPage} / ${kategoriTotalPages || 1}`;
+
+        document.getElementById('kategoriPrev').disabled = kategoriCurrentPage <= 1;
+        document.getElementById('kategoriNext').disabled = kategoriCurrentPage >= kategoriTotalPages;
+
+        document.getElementById('kategoriPrev').classList.toggle('opacity-40', kategoriCurrentPage <= 1);
+        document.getElementById('kategoriNext').classList.toggle('opacity-40', kategoriCurrentPage >= kategoriTotalPages);
+    }
+
+    document.getElementById('kategoriPrev').addEventListener('click', function () {
+        if (kategoriCurrentPage > 1) {
+            kategoriCurrentPage--;
+            renderKategoriPage(kategoriCurrentPage);
+        }
+    });
+
+    document.getElementById('kategoriNext').addEventListener('click', function () {
+        if (kategoriCurrentPage < kategoriTotalPages) {
+            kategoriCurrentPage++;
+            renderKategoriPage(kategoriCurrentPage);
+        }
+    });
+
+    renderKategoriPage(kategoriCurrentPage);
+    });
 </script>
 @endpush
