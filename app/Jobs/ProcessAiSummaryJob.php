@@ -349,8 +349,9 @@ KEMBALIKAN HANYA OBJEK JSON VALID TANPA MARKDOWN:
                 return;
             }
 
-            $rawAiResponse = $response->json('candidates.0.content.parts.0.text');
-            $result = json_decode($rawAiResponse, true);
+            $rawAiResponse = (string) $response->json('candidates.0.content.parts.0.text', '');
+
+            $result = $this->decodeGeminiJson($rawAiResponse);
 
             if (!$result) {
                 Log::error("Gagal decode JSON Gemini untuk pasien {$this->clientNumber}. Raw: " . $rawAiResponse);
@@ -404,6 +405,97 @@ KEMBALIKAN HANYA OBJEK JSON VALID TANPA MARKDOWN:
         } catch (\Exception $e) {
             Log::error("ProcessAiSummaryJob Error untuk pasien {$this->clientNumber}: " . $e->getMessage());
         }
+    }
+
+    private function decodeGeminiJson(?string $rawAiResponse): ?array
+{
+    if (!$rawAiResponse) {
+        return null;
+    }
+
+    $clean = trim($rawAiResponse);
+
+    // Bersihkan jika Gemini tetap membungkus dengan markdown.
+    $clean = preg_replace('/^```json\s*/i', '', $clean);
+    $clean = preg_replace('/^```\s*/', '', $clean);
+    $clean = preg_replace('/\s*```$/', '', $clean);
+    $clean = trim($clean);
+
+    // Coba decode normal dulu.
+    $decoded = json_decode($clean, true);
+
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        return $decoded;
+    }
+
+    // Kalau gagal, ambil objek JSON pertama yang balanced.
+    // Ini menangani kasus Gemini memberi output:
+    // { ... }
+    // }
+    $jsonObject = $this->extractFirstBalancedJsonObject($clean);
+
+    if (!$jsonObject) {
+        return null;
+    }
+
+    $decoded = json_decode($jsonObject, true);
+
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        return $decoded;
+    }
+
+    return null;
+}
+
+    private function extractFirstBalancedJsonObject(string $text): ?string
+    {
+        $start = strpos($text, '{');
+
+        if ($start === false) {
+            return null;
+        }
+
+        $depth = 0;
+        $inString = false;
+        $escape = false;
+        $length = strlen($text);
+
+        for ($i = $start; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($escape) {
+                $escape = false;
+                continue;
+            }
+
+            if ($char === '\\') {
+                $escape = true;
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = !$inString;
+                continue;
+            }
+
+            if ($inString) {
+                continue;
+            }
+
+            if ($char === '{') {
+                $depth++;
+            }
+
+            if ($char === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return substr($text, $start, $i - $start + 1);
+                }
+            }
+        }
+
+        return null;
     }
 
     private function fallbackRingkasan(string $conversationOutcome): string
