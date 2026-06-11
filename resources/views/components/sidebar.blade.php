@@ -38,12 +38,20 @@
                     <span class="text-sm font-medium">Log Chat Masuk</span>
                 </a>
 
-                <a href="{{ url('/laporan') }}" class="{{ request()->is('laporan*') ? 'bg-dark-surface text-white border-l-2 border-brand-purple' : 'text-gray-400 hover:bg-dark-surface/50 hover:text-white border-l-2 border-transparent' }} flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-all group">
-                    <svg class="w-5 h-5 {{ request()->is('laporan*') ? 'text-brand-purple' : 'text-gray-500 group-hover:text-brand-purple' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <a href="{{ url('/laporan') }}" class="{{ request()->routeIs('laporan.index') ? 'bg-dark-surface text-white border-l-2 border-brand-purple' : 'text-gray-400 hover:bg-dark-surface/50 hover:text-white border-l-2 border-transparent' }} flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-all group">
+                    <svg class="w-5 h-5 {{ request()->routeIs('laporan.index') ? 'text-brand-purple' : 'text-gray-500 group-hover:text-brand-purple' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3a1 1 0 011-1h2a1 1 0 011 1v18a1 1 0 01-1 1h-2a1 1 0 01-1-1V3zM4 13a1 1 0 011-1h2a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8zM18 8a1 1 0 011-1h2a1 1 0 011 1v13a1 1 0 01-1 1h-2a1 1 0 01-1-1V8z"></path>
                     </svg>
                     <span class="text-sm font-medium">Laporan Marketing</span>
                 </a>
+
+                <a href="{{ route('laporan.management') }}" class="{{ request()->routeIs('laporan.management') ? 'bg-dark-surface text-white border-l-2 border-brand-purple' : 'text-gray-400 hover:bg-dark-surface/50 hover:text-white border-l-2 border-transparent' }} flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-all group">
+                    <svg class="w-5 h-5 {{ request()->routeIs('laporan.management') ? 'text-brand-purple' : 'text-gray-500 group-hover:text-brand-purple' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6a2 2 0 012-2h2a2 2 0 012 2v6m-8 0h8m-8 0H5a2 2 0 01-2-2V7a2 2 0 012-2h3m8 12h3a2 2 0 002-2V7a2 2 0 00-2-2h-3M8 5h8"></path>
+                    </svg>
+                    <span class="text-sm font-medium">Laporan Management</span>
+                </a>
+
             </nav>
         </div>
 

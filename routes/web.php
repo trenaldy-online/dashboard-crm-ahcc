@@ -5,6 +5,7 @@ use App\Http\Controllers\ChatListController;
 use App\Http\Controllers\TelemetryController;
 use App\Http\Controllers\AiBatchController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ManagementReportController;
 
 // Jadikan halaman Daftar Chat sebagai halaman utama (ketika buka 127.0.0.1:8000)
 Route::get('/', function () {
@@ -36,3 +37,4 @@ Route::post('/pipeline/update-manual', [\App\Http\Controllers\PipelineController
 
 // Rute untuk halaman Laporan (Report)
 Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');
+Route::get('/laporan-management', [ManagementReportController::class, 'index'])->name('laporan.management');
