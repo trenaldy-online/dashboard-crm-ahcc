@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+
+use App\Services\GeminiClient;
 use App\Models\WaChat;
 use App\Models\LeadSummary;
 use Illuminate\Bus\Batchable;
@@ -320,30 +322,14 @@ KEMBALIKAN HANYA OBJEK JSON VALID TANPA MARKDOWN:
     \"fbclid\": null,
     \"tunda_sampai_tanggal\": null
 }";
+try {
+        $response = app(GeminiClient::class)->generateJson($prompt, [
+            'temperature' => 0.2,
+            'timeout' => 60,
+            'retries' => 2,
+        ]);
 
-        $apiKey = env('GEMINI_API_KEY');
-
-        try {
-            $response = Http::timeout(30)
-                ->retry(2, 1000)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
-                ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={$apiKey}", [
-                    'contents' => [
-                        [
-                            'parts' => [
-                                [
-                                    'text' => $prompt,
-                                ],
-                            ],
-                        ],
-                    ],
-                    'generationConfig' => [
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
-
+        
             if (!$response->successful()) {
                 Log::error("API Gemini Error (Pasien {$this->clientNumber}): " . $response->body());
                 return;

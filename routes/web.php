@@ -38,3 +38,10 @@ Route::post('/pipeline/update-manual', [\App\Http\Controllers\PipelineController
 // Rute untuk halaman Laporan (Report)
 Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');
 Route::get('/laporan-management', [ManagementReportController::class, 'index'])->name('laporan.management');
+
+Route::post('/laporan-management/process', [ManagementReportController::class, 'process'])->name('laporan.management.process');
+Route::post('/laporan-management/cache', [ManagementReportController::class, 'createCache'])->name('laporan.management.cache');
+Route::post('/laporan-management/ask', [ManagementReportController::class, 'askData'])->name('laporan.management.ask');
+Route::delete('/laporan-management/questions/{id}', [ManagementReportController::class, 'destroyQuestion'])->name('laporan.management.questions.destroy');
+Route::delete('/laporan-management/questions', [ManagementReportController::class, 'clearQuestions'])->name('laporan.management.questions.clear');
+Route::post('/laporan-management/corrections', [ManagementReportController::class, 'correctSummaryField'])->name('laporan.management.corrections.store');
