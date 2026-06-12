@@ -13,7 +13,8 @@ namespace App\Http\Controllers;
 
 
 
-use App\Models\ManagementClassificationRule;use App\Models\ManagementSummaryCorrection;use Illuminate\Bus\Batch;use App\Jobs\CreateManagementReportCacheJob;use Illuminate\Support\Str;use App\Services\GeminiClient;use App\Models\ManagementReportQuestion;use App\Models\ManagementReportCache;use Illuminate\Support\Facades\DB;use Illuminate\Support\Facades\Bus;use App\Jobs\ProcessManagementLeadSummaryJob;use App\Models\ManagementLeadSummary;
+use App\Models\ManagementClassificationRule;use App\Models\ManagementSummaryCorrection;use Illuminate\Bus\Batch;use App\Jobs\CreateManagementReportCacheJob;use Illuminate\Support\Str;use App\Services\GeminiClient;use App\Models\ManagementReportQuestion;use App\Models\ManagementReportCache;use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;use Illuminate\Support\Facades\Bus;use App\Jobs\ProcessManagementLeadSummaryJob;use App\Models\ManagementLeadSummary;
 use App\Models\WaChat;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -158,8 +159,8 @@ class ManagementReportController extends Controller
             ->limit(12)
             ->get();
 
-        $coverageStart = $start ?? $startDate;
-        $coverageEnd = $end ?? $endDate;
+        $coverageStart = $start;
+        $coverageEnd = $end;
         $processingCoverage = $this->buildProcessingCoverage($coverageStart, $coverageEnd);
 
 
@@ -443,8 +444,8 @@ $channelDetails = $channelDetailRows
 
 
         // AHCC KANBAN SALES PIPELINE FUNNEL
-        $kanbanStart = $start ?? $startDate;
-        $kanbanEnd = $end ?? $endDate;
+        $kanbanStart = $start;
+        $kanbanEnd = $end;
 
         $kanbanClientNumbers = WaChat::whereBetween('chat_time', [
                 $kanbanStart->copy()->startOfDay(),
@@ -671,7 +672,7 @@ $channelDetails = $channelDetailRows
     }
 
 
-    public function destroyQuestion(Request $request, $id)
+    public function destroyQuestion(Request $request, int $id)
     {
         $question = ManagementReportQuestion::findOrFail($id);
 
@@ -743,7 +744,7 @@ $channelDetails = $channelDetailRows
             'correction_reason' => trim($validated['correction_reason']),
             'learning_keywords' => trim((string) ($validated['learning_keywords'] ?? '')),
             'source' => 'human',
-            'created_by' => auth()->id(),
+            'created_by' => Auth::id(),
         ]);
 
         ManagementClassificationRule::create([
